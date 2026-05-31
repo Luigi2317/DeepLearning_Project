@@ -1,3 +1,8 @@
+# Credentials (NE JAMAIS pousher)
+connexion_scaleway
+*.key
+*.pem
+
 # Dataset (trop lourd pour GitHub)
 Projet/twcs.csv
 Projet/sample.csv
