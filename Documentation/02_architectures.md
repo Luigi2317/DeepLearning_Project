@@ -15,7 +15,7 @@ Implémenter et comparer **6 architectures de classification d'intentions** sur 
 | CNN + BiLSTM (hybride) | `07_model_cnn_lstm.ipynb` | `client_data.pkl` | 59.6% |
 | **DistilBERT fine-tuné** | `05_model_distilbert.ipynb` | `client_text_data.pkl` | **63.2%** |
 
-Les 3 premiers modèles utilisent le vocabulaire custom (15 000 tokens, indices entiers). DistilBERT utilise son propre tokenizer WordPiece — il ne partage pas les mêmes données d'entrée. La comparaison reste équitable sur le **test set** (même split, même labels).
+Les 5 modèles from scratch (RNN, LSTM, BiLSTM, Transformer, CNN+BiLSTM) utilisent le vocabulaire custom (15 000 tokens, indices entiers). DistilBERT utilise son propre tokenizer WordPiece — il ne partage pas les mêmes données d'entrée. La comparaison reste équitable sur le **test set** (même split, même labels).
 
 ---
 
@@ -48,7 +48,7 @@ Même structure pour les 3 architectures, inspirée des TP5/TP6 :
 Pour chaque époque :
   1. train_epoch() → loss + accuracy sur train
   2. eval_epoch()  → loss + accuracy sur val
-  3. Early stopping si val_loss ne s'améliore pas pendant patience=3 époques
+  3. Early stopping si val_acc ne s'améliore pas (patience=4 dans CNN+BiLSTM — pas d'early stopping dans 02-05)
   4. Sauvegarder le meilleur état (best_val_loss)
 
 Après entraînement :
@@ -79,6 +79,8 @@ h_t = tanh(W_h · h_{t-1} + W_x · x_t + b)
 **Avantages** : simple, léger, converge vite.
 
 **Limite principale : le vanishing gradient.** Lors de la rétropropagation, les gradients sont multipliés à travers tous les pas de temps. Sur des séquences longues, ce produit tend vers 0 — le modèle n'apprend plus les dépendances du début de séquence. Sur nos tweets (MAX_LEN=64, moyenne ~17 mots), ce problème est atténué mais présent.
+
+**Note sur le mean pooling (v2)** : l'implémentation utilise `output.mean(dim=1)` (moyenne de tous les états cachés) au lieu de `hidden[-1]` (dernier état seulement). Ce changement améliore la **stratégie de lecture** des états cachés — le début de séquence est inclus — mais ne résout pas le vanishing gradient. La recurrence `h_t = tanh(W_h · h_{t-1} + W_x · x_t)` reste inchangée, le gradient disparaît toujours pendant la rétropropagation. C'est pourquoi le RNN reste la moins bonne architecture malgré ce fix (57.6% vs 59.5% pour BiLSTM).
 
 **Rôle dans le projet** : baseline de référence. Toute amélioration des architectures suivantes doit se mesurer par rapport au RNN.
 
