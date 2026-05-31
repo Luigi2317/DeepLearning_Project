@@ -1,3 +1,6 @@
+# Claude Code memory (interne à l'outil)
+.claude/
+
 # Credentials (NE JAMAIS pousher)
 connexion_scaleway
 *.key
