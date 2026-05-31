@@ -308,7 +308,7 @@ RNN, BiLSTM et Transformer from scratch apprennent les représentations **à par
 
 DistilBERT a été pré-entraîné sur **~11 milliards de tokens** (Wikipedia + BooksCorpus) avec deux objectifs non-supervisés : **Masked Language Modeling** (prédire des tokens masqués au milieu d'une phrase) et **Next Sentence Prediction**. Ces objectifs forcent le modèle à apprendre des représentations contextuelles riches — chaque token est représenté différemment selon son contexte (contrairement à Word2Vec qui donne le même vecteur à "bank" dans "river bank" et "bank account").
 
-Le **fine-tuning** consiste à continuer l'entraînement de toutes les couches sur notre tâche spécifique avec un LR très faible (2e-5) pour ne pas détruire les représentations pré-apprises. Seule la tête de classification linéaire (`768 → 12`) est initialisée aléatoirement.
+Le **fine-tuning** consiste à continuer l'entraînement de toutes les couches sur notre tâche spécifique avec un LR très faible (2e-5) pour ne pas détruire les représentations pré-apprises. Seule la tête de classification linéaire (`768 → 10`) est initialisée aléatoirement.
 
 ```
 Pré-entraînement (11B tokens) → Représentations génériques riches
@@ -333,7 +333,7 @@ h_[CLS] — représentation du token [CLS]   → (batch, 768)
     ↓
 pre_classifier : Linear(768, 768) → ReLU → Dropout
     ↓
-classifier : Linear(768, 12)              → (batch, 12)
+classifier : Linear(768, 10)              → (batch, 10)
 ```
 
 #### Tokenizer WordPiece vs vocabulaire custom
