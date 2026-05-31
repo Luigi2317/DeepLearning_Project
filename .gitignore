@@ -1,0 +1,25 @@
+# Dataset (trop lourd pour GitHub)
+Projet/twcs.csv
+Projet/sample.csv
+archive.zip
+DE_EFREI.pdf
+
+# Cours (PDFs lourds)
+Cours/
+
+# TP (matériel du prof, non projet)
+TP/
+
+# Artefacts entraînement (sur le serveur Scaleway)
+data/
+models/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
