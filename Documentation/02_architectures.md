@@ -121,6 +121,17 @@ class RNNClassifier(nn.Module):
 
 Différences avec TP5 : `output_dim=10` (vs 2), dropout ajouté, **mean pooling** au lieu de `hidden[-1]` (correction du vanishing gradient — cf. fix v2 qui a fait passer de 12.7% → 57.6%).
 
+### Paramètres (`02_model_rnn.ipynb`)
+
+| Paramètre | Valeur | Pourquoi pas autre chose ? |
+|---|---|---|
+| `EMBED_DIM` | 128 | TP5 utilisait 64 pour IMDB binaire. Avec 10 classes de tweets, 64 insuffisant — les embeddings n'ont pas assez de dimensions pour séparer les intentions. 256 ralentirait sans gain sur tweets courts. |
+| `HIDDEN_DIM` | 256 | TP5 utilisait 128 pour 2 classes. 10 classes nécessitent plus de capacité. 512 = overfitting. |
+| `DROPOUT` | 0.3 | Absent du TP5 original (2 classes, simple). Ajouté pour régulariser sur 10 classes. |
+| `LR` | 1e-3 | LR standard Adam. Stable avec mean pooling (pas d'explosion de gradient). |
+| `N_EPOCHS` | 10 | Convergence vers epoch 4-5. Le meilleur modèle est sauvegardé automatiquement à chaque amélioration de val_acc. |
+| `output.mean(dim=1)` | mean pooling | `hidden[-1]` donnait 12.7% (vanishing gradient — mots du début perdus). Mean pooling sur tous les états → 57.6%. |
+
 ---
 
 ## Architecture 2 — BiLSTM
@@ -183,7 +194,18 @@ class BiLSTMClassifier(nn.Module):
         return y_pred
 ```
 
-Différences avec TP6 : `bidirectional=True` depuis le départ, `output_dim=12`.
+Différences avec TP6 : `bidirectional=True` depuis le départ, `output_dim=10`.
+
+### Paramètres (`03_model_lstm.ipynb`)
+
+| Paramètre | Valeur | Pourquoi pas autre chose ? |
+|---|---|---|
+| `EMBED_DIM` | 128 | Même raisonnement que RNN. |
+| `HIDDEN_DIM` | 256 | Pour BiLSTM la sortie finale est 2×256=512 (forward + backward concaténés). 128 = trop peu de capacité pour 10 classes. |
+| `NUM_LAYERS` | 2 | 1 couche : moins de capacité. 3+ : risque d'overfitting sur tweets courts (~17 tokens) + entraînement plus lent. |
+| `DROPOUT` | 0.3 | Appliqué entre les couches LSTM (si NUM_LAYERS > 1) ET avant la couche finale. |
+| `LR` | 5e-4 | Plus faible que RNN (1e-3) : le LSTM multi-couches est plus sensible aux grands pas de gradient, 1e-3 causait des oscillations. |
+| `N_EPOCHS` | 15 | LSTM converge plus lentement que RNN (plus de paramètres — 3 portes). 10 serait trop court. |
 
 ---
 
@@ -262,6 +284,18 @@ Linear(embed_dim, output_dim)                      → (batch, 12)
 - `padding_mask = (x == 0)` passé comme `key_padding_mask`
 - Mise à l'échelle des embeddings : `embedding(x) * math.sqrt(embed_dim)` (papier original)
 
+### Paramètres (`04_model_transformer.ipynb`)
+
+| Paramètre | Valeur | Pourquoi pas autre chose ? |
+|---|---|---|
+| `EMBED_DIM` | 128 | Doit être **divisible par NUM_HEADS** : 128 / 4 = 32 dims par tête d'attention. |
+| `NUM_HEADS` | 4 | TP7 utilise 4. Chaque tête apprend un type de relation différent. 8 têtes nécessiterait EMBED_DIM ≥ 256. |
+| `FF_DIM` | 256 | Convention : 2× embed_dim dans le Feed-Forward. Le papier original (Vaswani 2017) utilise 4× mais nos tweets sont courts — 2× suffit. |
+| `NUM_BLOCKS` | 2 | TP7 utilise 2. Plus de blocs = overfitting en apprenant from scratch sur ~700K tweets. DistilBERT a 6 blocs mais est pré-entraîné sur 11B tokens. |
+| `DROPOUT` | 0.1 | Plus faible que LSTM (0.3) : les connexions résiduelles dans chaque TransformerBlock régularisent déjà. |
+| `LR` | 1e-3 | Standard Adam pour Transformer from scratch. |
+| `N_EPOCHS` | 10 | Convergence rapide observée. Meilleur modèle sauvegardé à chaque amélioration. |
+
 ---
 
 ## Architecture 4 — DistilBERT fine-tuné
@@ -326,9 +360,20 @@ La structure de `train_epoch_bert` / `eval_epoch_bert` / `train_model_bert` est 
 - `scheduler.step()` appelé après chaque **batch** (pas après chaque époque) — le scheduler de warmup est batch-level
 - `outputs.logits` au lieu de `outputs` directement — convention HuggingFace : les modèles retournent un objet `BaseModelOutput`, les logits sont dans `.logits`
 
+### Paramètres (`05_model_distilbert.ipynb`)
+
+| Paramètre | Valeur | Pourquoi pas autre chose ? |
+|---|---|---|
+| `MAX_LEN` | 128 | WordPiece décompose les mots rares en sous-mots → un tweet de 17 mots peut donner 30-80 tokens. 64 tronquait des tweets. 512 = inutile et lent. |
+| `BATCH_SIZE` | 32 | DistilBERT est 10× plus lourd que RNN/LSTM. 64 causait OOM GPU. 16 = entraînement trop lent. |
+| `LR` | 2e-5 | Standard fine-tuning BERT (Devlin et al. 2018). 1e-3 détruirait les poids pré-entraînés en quelques batchs. 1e-5 = convergence trop lente. |
+| `optimizer` | AdamW | Adam avec weight decay L2 intégré (`weight_decay=0.01`). Standard pour fine-tuning BERT — régularise les poids sans pénaliser les biais. |
+| `N_EPOCHS` | 3 | Fine-tuning converge vite (poids déjà bien initialisés). 1 = pas assez. 5+ = overfitting. 3 = standard dans la littérature BERT. |
+| `class_weights` | non | Testés en v1 : causaient sur-prédiction massive de `non_english` (precision=0.31). Un modèle pré-entraîné sur 11B tokens n'a pas besoin de correction de déséquilibre. |
+
 ---
 
-## Paramètres techniques
+## Fonction de perte commune
 
 ### Pourquoi CrossEntropyLoss pour tous les modèles ?
 
@@ -356,69 +401,6 @@ On a 10 classes mutuellement exclusives — chaque tweet appartient à **une seu
 | `MAX_LEN` | **64** | 200 (TP5), 128 | TP5 utilisait 200 pour des critiques de films longues (P95=598 mots). Nos tweets font en moyenne 17 mots, P95=40. 64 couvre 99%+ des tweets. Utiliser 200 ajouterait 136 tokens PAD inutiles par séquence. |
 | `BATCH_SIZE` | **64** | 32, 128 | Standard TP5/TP6. 32 = entraînement lent. 128 = gradients trop lisses, moins de signal de régularisation. 64 est le compromis classique. |
 | `N_CLASSES` | **10** | 11 (avec short_ack), 12 (avec other) | `other` et `short_ack` supprimés car pas de signal sémantique propre → dégradaient les métriques (precision ~0.44). |
-
----
-
-### RNN — `02_model_rnn.ipynb`
-
-| Paramètre | Valeur | Pourquoi pas autre chose ? |
-|---|---|---|
-| `HIDDEN_DIM` | **256** | TP5 utilisait 128 pour 2 classes. Avec 10 classes, l'état caché doit encoder plus d'information. 128 → trop peu de capacité. 512 → overfitting sur tweets courts. |
-| `DROPOUT` | **0.3** | Standard TP6. Mis entre l'état caché et la couche finale. Pas de dropout dans le TP5 original, ajouté pour régulariser sur 10 classes. |
-| `LR` | **1e-3** | LR standard Adam. Avec mean pooling (pas de gradient explosion), 1e-3 est stable. |
-| `N_EPOCHS` | **10** | Le modèle converge vers epoch 4-5 (overfitting après). 10 avec sauvegarde du meilleur = optimal. |
-| `output.mean(dim=1)` | **mean pooling** | `hidden[-1]` donnait 12.7% (vanishing gradient). Mean pooling inclut les états du début de séquence → 57.6%. |
-
----
-
-### LSTM & BiLSTM — `03_model_lstm.ipynb`
-
-| Paramètre | Valeur | Pourquoi pas autre chose ? |
-|---|---|---|
-| `HIDDEN_DIM` | **256** | Même raisonnement que RNN. Pour BiLSTM la sortie est 2×256=512 (forward + backward). |
-| `NUM_LAYERS` | **2** | 1 couche : moins de capacité. 3+ : risque d'overfitting sur tweets courts + plus lent. 2 couches = bon équilibre. |
-| `DROPOUT` | **0.3** | Appliqué entre les couches LSTM (actif seulement si NUM_LAYERS > 1) et avant la couche finale. |
-| `LR` | **5e-4** | Plus faible que RNN (1e-3) car le LSTM multi-couches est plus sensible aux grands pas de gradient. 1e-3 causait des oscillations. |
-| `N_EPOCHS` | **15** | LSTM converge plus lentement que RNN (plus de paramètres à ajuster). 10 serait trop court. |
-
----
-
-### Transformer from scratch — `04_model_transformer.ipynb`
-
-| Paramètre | Valeur | Pourquoi pas autre chose ? |
-|---|---|---|
-| `EMBED_DIM` | **128** | Doit être **divisible par NUM_HEADS**. 128 / 4 = 32 dims par tête. |
-| `NUM_HEADS` | **4** | TP7 utilise 4. Chaque tête apprend un type de relation différent. 8 têtes nécessiterait embed_dim=256 minimum (32 dims/tête). |
-| `FF_DIM` | **256** | Convention : 2× embed_dim dans le Feed-Forward. Le papier original (Vaswani 2017) utilise 4× mais nos tweets sont courts. |
-| `NUM_BLOCKS` | **2** | TP7 utilise 2. Plus de blocs = plus de capacité mais overfitting sur petit dataset from scratch. DistilBERT a 6 blocs mais est pré-entraîné. |
-| `DROPOUT` | **0.1** | Plus faible que LSTM (0.3) car les connexions résiduelles dans chaque bloc aident déjà à régulariser. |
-| `LR` | **1e-3** | Standard Adam pour Transformer from scratch. |
-
----
-
-### CNN + BiLSTM — `07_model_cnn_lstm.ipynb`
-
-| Paramètre | Valeur | Pourquoi pas autre chose ? |
-|---|---|---|
-| `NUM_FILTERS` | **256** | Nombre de détecteurs de patterns CNN. Chaque filtre apprend un n-gramme différent ("flight cancelled", "not working"). 128 = trop peu. 512 = overfitting + lent. |
-| `KERNEL_SIZE` | **3** | Trigrammes. Tweets ~17 mots : les intentions se lisent sur 2-4 mots. kernel=2 (bigrammes) = trop court. kernel=5 = peu de patterns distincts sur tweets courts. |
-| `HIDDEN_DIM` | **256** | Cohérent avec NUM_FILTERS. Le BiLSTM reçoit des vecteurs 256d en entrée. |
-| `LR` | **5e-4** | Plus conservateur que 1e-3 : les features CNN amplifient les gradients, risque d'oscillation avec LR trop grand. |
-| `PATIENCE` | **4** | Seul modèle with early stopping explicite. 3 = trop court (le CNN+BiLSTM peut stagner 2-3 epochs). 4 = bon équilibre. |
-| `ReduceLROnPlateau` | **factor=0.5, patience=2** | Divise le LR par 2 si val_loss stagne 2 epochs → affine la convergence automatiquement. |
-
----
-
-### DistilBERT — `05_model_distilbert.ipynb`
-
-| Paramètre | Valeur | Pourquoi pas autre chose ? |
-|---|---|---|
-| `MAX_LEN` | **128** | Tokenizer WordPiece décompose les mots rares en sous-mots → un tweet de 17 mots peut donner 30-50 tokens. 64 tronquait des tweets. 128 couvre >99.9%. |
-| `BATCH_SIZE` | **32** | DistilBERT est 10× plus lourd que RNN/LSTM. 64 causerait OOM GPU. 16 = entraînement trop lent. |
-| `LR` | **2e-5** | Fine-tuning standard pour BERT (Devlin et al. 2018). 1e-3 détruirait les poids pré-entraînés. 1e-5 = convergence trop lente. |
-| `optimizer` | **AdamW** | Adam avec weight decay L2 intégré. Standard pour le fine-tuning BERT. `weight_decay=0.01` régularise les poids lourds. |
-| `N_EPOCHS` | **3** | Fine-tuning converge vite (poids déjà bien initialisés). 1 = pas assez. 5+ = overfitting. 3 = standard dans la littérature BERT. |
-| `class_weights` | **non** | Testés en v1 : causaient sur-prédiction massive de `non_english` (precision=0.31). DistilBERT pré-entraîné n'en a pas besoin. |
 
 ---
 
