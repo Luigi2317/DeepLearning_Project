@@ -91,13 +91,13 @@ x (batch, seq_len)
     ↓
 Embedding(vocab_size, embed_dim, padding_idx=0)  → (batch, seq_len, embed_dim)
     ↓
-RNN(embed_dim, hidden_dim, batch_first=True)     → hidden : (1, batch, hidden_dim)
+RNN(embed_dim, hidden_dim, batch_first=True)     → output : (batch, seq_len, hidden_dim)
     ↓
-hidden[-1]                                        → (batch, hidden_dim)
+output.mean(dim=1)                                → (batch, hidden_dim)
     ↓
 Dropout(dropout)
     ↓
-Linear(hidden_dim, output_dim)                    → (batch, 12)
+Linear(hidden_dim, output_dim)                    → (batch, 10)
 ```
 
 ### Pattern TP5 réutilisé
@@ -171,7 +171,7 @@ cat([hidden[-2], hidden[-1]])                         → (batch, 2*hidden_dim)
     ↓
 Dropout(dropout)
     ↓
-Linear(2*hidden_dim, output_dim)                      → (batch, 12)
+Linear(2*hidden_dim, output_dim)                      → (batch, 10)
 ```
 
 ### Pattern TP6 réutilisé
@@ -274,7 +274,7 @@ N × TransformerBlock(embed_dim, num_heads, ff_dim) → même shape
     ↓
 Masked mean pooling                                → (batch, embed_dim)
     ↓
-Linear(embed_dim, output_dim)                      → (batch, 12)
+Linear(embed_dim, output_dim)                      → (batch, 10)
 ```
 
 ### Pattern TP7 réutilisé
@@ -349,7 +349,7 @@ Le fine-tuning de BERT est sensible au LR initial. Un LR soudain de 2e-5 dès la
 ### Structure
 
 ```python
-DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=12)
+DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=10)
 ```
 
 Tous les paramètres sont entraînables (`requires_grad=True`). La tête de classification (initialisée aléatoirement) reçoit un gradient fort dès le départ ; les couches profondes du Transformer, déjà bien initialisées, reçoivent un gradient faible grâce au LR réduit.
@@ -524,7 +524,7 @@ CNN + BiLSTM est la seule architecture entièrement apprise from scratch qui com
 
 ## Plan d'implémentation
 
-**Fichier cible** : `notebooks/02_models_v1.ipynb`
+**Fichiers cibles** : `notebooks/02_model_rnn.ipynb`, `notebooks/03_model_lstm.ipynb`, `notebooks/04_model_transformer.ipynb`, `notebooks/05_model_distilbert.ipynb`, `notebooks/07_model_cnn_lstm.ipynb`
 
 **Blocs prévus** :
 
